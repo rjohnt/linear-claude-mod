@@ -1,8 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, McpToolResult, Register, RenderNode } from 'claude-code'
 
-import type { Board, Ticket, View } from '../types'
-import { OPEN_STATE_TYPES, PRIORITY_LABEL, ago, groupTickets, parseDetail, parseIssues, workPrompt } from './board'
+import type { Action, Board, Ticket, View, WorkflowState } from '../types'
+import {
+  OPEN_STATE_TYPES,
+  PRIORITY_LABEL,
+  PRIORITY_OPTIONS,
+  ago,
+  groupTickets,
+  parseDetail,
+  parseIssues,
+  parseStates,
+  workPrompt,
+} from './board'
 
 const PANE = 'linear-tickets'
 const REFRESH_MS = 5 * 60 * 1000
@@ -17,12 +27,12 @@ const board = atom({ plugin: 'linear-claude-mod', key: 'board' } as const, {
   error: null,
 } as Board)
 
-const view = atom({ plugin: 'linear-claude-mod', key: 'view' } as const, {
-  selected: null,
-  detail: null,
-  isLoading: false,
-  error: null,
-} as View)
+const EMPTY_VIEW: View = { selected: null, detail: null, isLoading: false, error: null, action: null, states: null, saving: null }
+
+const view = atom({ plugin: 'linear-claude-mod', key: 'view' } as const, EMPTY_VIEW)
+
+// Each action's field, by the key the pane draws it under.
+const ACTION_KEY: Record<Action, string> = { comment: 'comment-input', move: 'status-select', priority: 'priority-select' }
 
 function textOf(result: McpToolResult): string {
   const text = result.content.map(c => (c.type === 'text' ? c.text : '')).join('')
@@ -41,7 +51,7 @@ async function refresh($: EngineInterface): Promise<void> {
           assignee: 'me',
           state,
           limit: 100,
-          fields: ['id', 'title', 'status', 'statusType', 'priority', 'url', 'project'],
+          fields: ['id', 'title', 'status', 'statusType', 'priority', 'url', 'project', 'teamId'],
         }),
       ),
     )
@@ -54,7 +64,12 @@ async function refresh($: EngineInterface): Promise<void> {
 }
 
 async function showTicket($: EngineInterface, ticket: Ticket): Promise<void> {
-  await update($, view, () => ({ selected: ticket, detail: null, isLoading: true, error: null }))
+  await update($, view, () => ({ ...EMPTY_VIEW, selected: ticket, isLoading: true }))
+  await loadDetail($, ticket)
+}
+
+// Fetches the ticket's detail and comments into the view, keeping what is shown until they land.
+async function loadDetail($: EngineInterface, ticket: Ticket): Promise<void> {
   try {
     const [issue, comments] = await Promise.all([
       $.mcp.call(LINEAR, 'get_issue', { id: ticket.id }),
@@ -68,8 +83,95 @@ async function showTicket($: EngineInterface, ticket: Ticket): Promise<void> {
   }
 }
 
-const backToList = ($: EngineInterface) =>
-  update($, view, () => ({ selected: null, detail: null, isLoading: false, error: null }))
+const backToList = ($: EngineInterface) => update($, view, () => EMPTY_VIEW)
+
+// Runs fn on the shown ticket only if it is still the one shown.
+const onShown = (id: string, fn: (v: View) => View) => (v: View) => (v.selected?.id === id ? fn(v) : v)
+
+async function openAction($: EngineInterface, action: Action): Promise<void> {
+  const { selected, detail, states } = await read($, view)
+  if (!selected) return
+  await update($, view, v => ({ ...v, action, error: null }))
+  // Best effort: the keyboard is the person's, so this is refused when they hold it elsewhere.
+  $.ui.focus({ requestId: PANE, key: ACTION_KEY[action] }).catch(() => {})
+  if (action !== 'move' || states) return
+
+  const team = detail?.team ?? selected.team
+  try {
+    if (!team) throw new Error('this ticket has no team to list statuses for')
+    const loaded = parseStates(textOf(await $.mcp.call(LINEAR, 'list_issue_statuses', { team })))
+    await update($, view, onShown(selected.id, v => ({ ...v, states: loaded })))
+  } catch (err) {
+    await update($, view, onShown(selected.id, v => ({ ...v, action: null, error: messageOf(err) })))
+  }
+}
+
+const closeAction = ($: EngineInterface) => update($, view, v => ({ ...v, action: null }))
+
+// One write to the shown ticket: marks it saving, runs it, then reloads the ticket and the list.
+async function write(
+  $: EngineInterface,
+  saving: string,
+  run: (t: Ticket) => Promise<unknown>,
+  done: (t: Ticket) => { toast: string; patch?: Partial<Ticket> },
+): Promise<void> {
+  const { selected, saving: busy } = await read($, view)
+  if (!selected || busy) return
+  await update($, view, v => ({ ...v, saving, error: null }))
+  try {
+    await run(selected)
+    const { toast, patch } = done(selected)
+    const ticket = { ...selected, ...patch }
+    await update($, view, onShown(selected.id, v => ({
+      ...v,
+      selected: ticket,
+      detail: v.detail && { ...v.detail, ...patch },
+      action: null,
+      saving: null,
+    })))
+    void $.ui.toast(toast)
+    await Promise.all([loadDetail($, ticket), refresh($)])
+  } catch (err) {
+    await update($, view, onShown(selected.id, v => ({ ...v, saving: null, error: messageOf(err) })))
+  }
+}
+
+const postComment = ($: EngineInterface, body: string) =>
+  body.trim()
+    ? write(
+        $,
+        'Posting comment…',
+        async t => textOf(await $.mcp.call(LINEAR, 'save_comment', { issueId: t.id, body: body.trim() })),
+        t => ({ toast: `Commented on ${t.id}` }),
+      )
+    : closeAction($)
+
+async function moveTo($: EngineInterface, value: string): Promise<void> {
+  const { selected, detail, states } = await read($, view)
+  const state = states?.find(s => (s.id ?? s.name) === value)
+  if (!selected || !state || state.name === (detail ?? selected).status) return void (await closeAction($))
+  await write(
+    $,
+    `Moving to ${state.name}…`,
+    async t => textOf(await $.mcp.call(LINEAR, 'save_issue', { id: t.id, state: state.id ?? state.name })),
+    t => ({ toast: `${t.id} → ${state.name}`, patch: { status: state.name, statusType: state.type } }),
+  )
+}
+
+async function setPriority($: EngineInterface, value: string): Promise<void> {
+  const { selected } = await read($, view)
+  const priority = Number(value)
+  if (!selected || priority === selected.priority) return void (await closeAction($))
+  const name = PRIORITY_OPTIONS.find(o => o.value === value)?.label ?? value
+  await write(
+    $,
+    `Setting priority to ${name}…`,
+    async t => textOf(await $.mcp.call(LINEAR, 'save_issue', { id: t.id, priority })),
+    t => ({ toast: `${t.id} priority → ${name}`, patch: { priority } }),
+  )
+}
+
+const stateValue = (s: WorkflowState) => s.id ?? s.name
 
 export const register: Register = (on, options) => {
   if (typeof options.linearServer === 'string' && options.linearServer) LINEAR = options.linearServer
@@ -97,9 +199,20 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Link, Markdown } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button, Link, Markdown } = ui
+    // Mobile draws no Input or Select yet, so it gets no actions.
+    const fields = 'Input' in ui && 'Select' in ui ? { Input: ui.Input, Select: ui.Select } : null
     const now = await $.clock.now()
-    const { selected, detail, isLoading: isDetailLoading, error: detailError } = await read($, view)
+    const {
+      selected,
+      detail,
+      isLoading: isDetailLoading,
+      error: detailError,
+      action,
+      states,
+      saving,
+    } = await read($, view)
 
     if (selected) {
       const t = detail ?? selected
@@ -125,6 +238,48 @@ export const register: Register = (on, options) => {
             {detail && detail.labels.length > 0 && <Text color="magenta">{detail.labels.join(', ')}</Text>}
             {detail?.branch && <Text dimColor>branch {detail.branch}</Text>}
           </Box>
+          {fields && (
+            <Box flexDirection="column">
+              <Box gap={2}>
+                <Button key="act:comment" plain hotkey="c" label="Comment" onPress={() => void openAction($, 'comment')} />
+                <Button key="act:move" plain hotkey="m" label="Move" onPress={() => void openAction($, 'move')} />
+                <Button key="act:priority" plain hotkey="p" label="Priority" onPress={() => void openAction($, 'priority')} />
+                {action && <Button key="act:cancel" plain hotkey="x" label="Cancel" onPress={() => void closeAction($)} />}
+              </Box>
+              {saving && <Text dimColor>{saving}</Text>}
+              {!saving && action === 'comment' && (
+                <fields.Input
+                  key={ACTION_KEY.comment}
+                  label="Comment: "
+                  placeholder="Markdown; Enter posts it"
+                  submitLabel="post"
+                  autoFocus
+                  onSubmit={value => void postComment($, value)}
+                />
+              )}
+              {!saving && action === 'move' && !states && <Text dimColor>Loading statuses…</Text>}
+              {!saving && action === 'move' && states && states.length > 0 && (
+                <fields.Select
+                  key={ACTION_KEY.move}
+                  label="Move to: "
+                  options={states.map(s => ({ value: stateValue(s), label: s.name }))}
+                  value={stateValue(states.find(s => s.name === t.status) ?? states[0]!)}
+                  autoFocus
+                  onSelect={value => void moveTo($, value)}
+                />
+              )}
+              {!saving && action === 'priority' && (
+                <fields.Select
+                  key={ACTION_KEY.priority}
+                  label="Priority: "
+                  options={PRIORITY_OPTIONS}
+                  value={String(t.priority)}
+                  autoFocus
+                  onSelect={value => void setPriority($, value)}
+                />
+              )}
+            </Box>
+          )}
           {isDetailLoading && <Text dimColor>Loading ticket…</Text>}
           {detailError && <Text color="red">Linear: {detailError}</Text>}
           {detail && (

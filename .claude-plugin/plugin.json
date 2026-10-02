@@ -1,7 +1,7 @@
 {
   "name": "linear-claude-mod",
-  "version": "0.2.0",
-  "description": "A Claude Code pane of your assigned Linear tickets by status; click one to load it into the session and read its details",
+  "version": "0.3.0",
+  "description": "A Claude Code pane of your assigned Linear tickets by status; click one to load it into the session, read its details, comment, or change its status and priority",
   "license": "MIT",
   "keywords": ["linear", "pane", "mod"],
   "types": "./types/index.d.ts",

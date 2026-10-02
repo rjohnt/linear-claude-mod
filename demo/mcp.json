@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "plugin:linear:linear": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_DEMO_DIR}/mock-linear.mjs"]
+    }
+  }
+}

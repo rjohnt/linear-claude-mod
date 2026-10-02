@@ -1,4 +1,4 @@
-import type { Ticket, TicketComment, TicketDetail } from '../types'
+import type { Ticket, TicketComment, TicketDetail, WorkflowState } from '../types'
 
 // The open state types, fetched one call each so finished tickets never eat the page limit.
 export const OPEN_STATE_TYPES = ['started', 'unstarted', 'triage', 'backlog'] as const
@@ -43,6 +43,8 @@ type RawIssue = {
   priority?: { value: number } | null
   url: string
   project?: string | null
+  team?: string | null
+  teamId?: string | null
 }
 
 export function parseIssues(text: string): Ticket[] {
@@ -55,6 +57,7 @@ export function parseIssues(text: string): Ticket[] {
     priority: i.priority?.value ?? 0,
     url: i.url,
     project: i.project ?? null,
+    team: i.teamId ?? i.team ?? null,
   }))
 }
 
@@ -109,6 +112,33 @@ export function parseDetail(ticket: Ticket, issueText: string, commentsText: str
     labels,
     branch: typeof issue.gitBranchName === 'string' ? issue.gitBranchName : null,
     updatedAt: typeof issue.updatedAt === 'string' ? issue.updatedAt : null,
+    team: typeof issue.teamId === 'string' ? issue.teamId : nameOf(issue.team) ?? ticket.team,
     comments,
   }
 }
+
+// Workflow order, as Linear's own status menu lists them.
+const STATE_TYPE_ORDER = ['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled', 'duplicate']
+const typeRank = (type: string) => {
+  const i = STATE_TYPE_ORDER.indexOf(type)
+  return i === -1 ? STATE_TYPE_ORDER.length : i
+}
+
+// list_issue_statuses answers a bare array; older servers wrap it as { statuses }.
+export function parseStates(text: string): WorkflowState[] {
+  const body = JSON.parse(text) as unknown
+  const raw = (Array.isArray(body) ? body : ((body as { statuses?: unknown[] })?.statuses ?? [])) as Record<string, unknown>[]
+  return raw
+    .filter(s => typeof s.name === 'string')
+    .map((s, i) => ({ s: { id: typeof s.id === 'string' ? s.id : null, name: String(s.name), type: String(s.type ?? '') }, i }))
+    .sort((a, b) => typeRank(a.s.type) - typeRank(b.s.type) || a.i - b.i)
+    .map(({ s }) => s)
+}
+
+export const PRIORITY_OPTIONS = [
+  { value: '1', label: 'Urgent' },
+  { value: '2', label: 'High' },
+  { value: '3', label: 'Medium' },
+  { value: '4', label: 'Low' },
+  { value: '0', label: 'No priority' },
+] as const
