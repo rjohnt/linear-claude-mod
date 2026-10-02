@@ -1,4 +1,4 @@
-# linear-claude-mod
+# Claude Mod for Linear
 
 A [Claude Code mod](https://claude.dev/blog/getting-started-with-claude-code-mods/) that puts your assigned
 Linear tickets in a pane. Open one to read it, and load it into your session when you're ready to work on it.
