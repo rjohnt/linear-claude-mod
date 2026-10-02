@@ -231,8 +231,8 @@ export const register: Register = (on, options) => {
             <Box gap={2}>
               <Button
                 key="work"
+                plain
                 hotkey="w"
-                variant="primary"
                 label="Work on this"
                 onPress={() => {
                   void $.prompt.submit({ text: workPrompt(selected), asUser: true })
