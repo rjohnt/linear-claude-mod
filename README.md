@@ -3,6 +3,8 @@
 A [Claude Code mod](https://claude.dev/blog/getting-started-with-claude-code-mods/) that puts your assigned
 Linear tickets in a pane. Open one to read it, and load it into your session when you're ready to work on it.
 
+[![The ticket pane: open a ticket, comment on it, then hand it to Claude with Work on this](docs/demo.gif)](docs/demo.mp4)
+
 - Tickets are grouped by status, most actionable first: In Progress, To Do, review/QA, Triage, Backlog.
   Within a status they sort by priority. Done and canceled tickets are hidden.
 - Clicking a ticket shows its details and comments in the pane. Nothing is sent to Claude yet.
@@ -43,19 +45,6 @@ claude plugin test .
 
 The code is in `hooks/`: `register.tsx` has the command and the pane, and `board.ts` has the sorting and
 parsing helpers.
-
-## Demo mode
-
-To record a demo without showing your real workspace, run:
-
-```sh
-./demo/demo.sh
-```
-
-This starts Claude Code with a mock Linear MCP server (`demo/mock-linear.mjs`) and no other MCP
-servers. The mock serves ten fictional "Acme" tickets in the same shapes the real Linear MCP returns, so
-both the pane and Claude read the same fake data. Comments and status changes Claude makes are kept in
-memory and reset when the session ends. To change the tickets, edit `ISSUES` in the mock.
 
 ## License
 
