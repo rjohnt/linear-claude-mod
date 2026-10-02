@@ -47,6 +47,11 @@ test('lists tickets by actionable status; a click shows the ticket; w loads it; 
     return text({ issues: ISSUES[String(e.args.state)] ?? [] })
   })
   on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const opened: string[][] = []
+  on('process.run', async (_$, e) => {
+    opened.push([...e.argv])
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   const submitted: string[] = []
   on('prompt.submit', async (_$, e) => {
     submitted.push(e.text)
@@ -73,6 +78,9 @@ test('lists tickets by actionable status; a click shows the ticket; w loads it; 
     expect(submitted[0]).toContain('ENG-3')
     expect(submitted[0]).toContain('https://linear.app/acme/issue/ENG-3')
     submitted.length = 0
+
+    await ui.press({ key: 'open' })
+    expect(opened.at(-1)?.at(-1)).toBe('https://linear.app/acme/issue/ENG-3')
 
     await ui.press({ key: 'back' })
     expect(await ui.find({ key: 'back' })).toBeUndefined()

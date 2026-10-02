@@ -83,6 +83,21 @@ async function loadDetail($: EngineInterface, ticket: Ticket): Promise<void> {
   }
 }
 
+// No engine call opens a URL, so use the OS opener; a missing one rejects and the next is tried.
+const OPENERS = [['xdg-open'], ['open'], ['cmd', '/c', 'start', '']]
+
+async function openUrl($: EngineInterface, url: string): Promise<void> {
+  for (const opener of OPENERS) {
+    try {
+      await $.process.run([...opener, url], { timeoutMs: 10_000 })
+      return
+    } catch {
+      // Not on this platform; try the next.
+    }
+  }
+  $.ui.toast(`Couldn't open a browser: ${url}`)
+}
+
 const backToList = ($: EngineInterface) => update($, view, () => EMPTY_VIEW)
 
 // Runs fn on the shown ticket only if it is still the one shown.
@@ -200,7 +215,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
-    const { Box, Text, Button, Link, Markdown } = ui
+    const { Box, Text, Button, Markdown } = ui
     // Mobile draws no Input or Select yet, so it gets no actions.
     const fields = 'Input' in ui && 'Select' in ui ? { Input: ui.Input, Select: ui.Select } : null
     const now = await $.clock.now()
@@ -239,7 +254,7 @@ export const register: Register = (on, options) => {
                   $.ui.toast(`Loading ${selected.id} into the session`)
                 }}
               />
-              <Link key="open" href={t.url} label="Open in Linear" />
+              <Button key="open" plain hotkey="o" label="Open in Linear" onPress={() => void openUrl($, t.url)} />
             </Box>
           </Box>
           <Box flexDirection="column">

@@ -8,7 +8,7 @@ Linear tickets in a pane. Open one to read it, and load it into your session whe
 - Clicking a ticket shows its details and comments in the pane. Nothing is sent to Claude yet.
 - **Work on this** (`w`) loads the ticket into your session: Claude reads it with the Linear tools,
   summarizes it, finds the relevant code and proposes a plan.
-- Keys (pane focused): `1`–`9` open a ticket, `w` works on the open ticket, `b` goes back to the list,
+- Keys (pane focused): `1`–`9` open a ticket, `w` works on the open ticket, `o` opens it in Linear, `b` goes back to the list,
   `r` refreshes. The list also refreshes every 5 minutes.
 - On a ticket: `c` writes a comment (Enter posts it), `m` opens a status picker with the team's
   workflow states, `p` opens a priority picker, and `x` cancels. The ticket and the list reload after
