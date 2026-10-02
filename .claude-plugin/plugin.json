@@ -1,0 +1,16 @@
+{
+  "name": "linear-claude-mod",
+  "version": "0.2.0",
+  "description": "A Claude Code pane of your assigned Linear tickets by status; click one to load it into the session and read its details",
+  "license": "MIT",
+  "keywords": ["linear", "pane", "mod"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "linearServer": {
+      "type": "string",
+      "title": "Linear MCP server",
+      "description": "The connected Linear MCP server's name as /mcp lists it.",
+      "default": "plugin:linear:linear"
+    }
+  }
+}
