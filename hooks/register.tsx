@@ -179,7 +179,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'tickets',
-      description: 'Show my assigned Linear tickets by status (click one to work on it)',
+      description: 'Show my assigned Linear tickets by status',
     })
     $.clock.every(REFRESH_MS, async () => {
       if ((await $.ui.panes()).some(p => p.id === PANE)) await refresh($)
@@ -228,7 +228,19 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column" gap={1}>
           <Box justifyContent="space-between">
             <Button key="back" plain hotkey="b" label="Back to list" onPress={() => void backToList($)} />
-            <Link key="open" href={t.url} label="Open in Linear" />
+            <Box gap={2}>
+              <Button
+                key="work"
+                hotkey="w"
+                variant="primary"
+                label="Work on this"
+                onPress={() => {
+                  void $.prompt.submit({ text: workPrompt(selected), asUser: true })
+                  $.ui.toast(`Loading ${selected.id} into the session`)
+                }}
+              />
+              <Link key="open" href={t.url} label="Open in Linear" />
+            </Box>
           </Box>
           <Box flexDirection="column">
             <Text bold>
@@ -329,10 +341,7 @@ export const register: Register = (on, options) => {
             hotkey={key}
             dimColor={t.statusType === 'backlog'}
             label={label.length > cols - 6 ? `${label.slice(0, cols - 7)}…` : label}
-            onPress={() => {
-              void $.prompt.submit({ text: workPrompt(t), asUser: true })
-              void showTicket($, t)
-            }}
+            onPress={() => void showTicket($, t)}
           />,
         )
       }

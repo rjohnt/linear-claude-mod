@@ -39,7 +39,7 @@ const PANE = {
 
 const text = (body: unknown) => ({ value: { content: [{ type: 'text' as const, text: JSON.stringify(body) }], isError: false } })
 
-test('lists tickets by actionable status; a click starts work and shows the ticket; Back returns', async ($, on) => {
+test('lists tickets by actionable status; a click shows the ticket; w loads it; Back returns', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   on('mcp.call', async (_$, e) => {
     if (e.tool === 'get_issue') return text(DETAIL)
@@ -61,19 +61,22 @@ test('lists tickets by actionable status; a click starts work and shows the tick
     expect(headers).toEqual(['In Progress (1)', 'To Do (1)', 'In Review (1)', 'Backlog (1)'])
 
     await ui.press({ key: 'ENG-3' })
+    expect(submitted.length).toBe(0)
     expect(await ui.find({ key: 'back' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Ready to go/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Bug/ })).toBeDefined()
     expect(await ui.find({ key: 'description' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Sam Example/ })).toBeDefined()
 
+    await ui.press({ key: 'work' })
+    expect(submitted.length).toBe(1)
+    expect(submitted[0]).toContain('ENG-3')
+    expect(submitted[0]).toContain('https://linear.app/acme/issue/ENG-3')
+    submitted.length = 0
+
     await ui.press({ key: 'back' })
     expect(await ui.find({ key: 'back' })).toBeUndefined()
     expect(await ui.find({ key: 'ENG-3' })).toBeDefined()
     await ui.unmount()
   }
-
-  expect(submitted.length).toBe(2)
-  expect(submitted[0]).toContain('ENG-3')
-  expect(submitted[0]).toContain('https://linear.app/acme/issue/ENG-3')
 })
