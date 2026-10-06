@@ -29,7 +29,7 @@ const DETAIL = {
 const COMMENTS = [{ author: { name: 'Sam Example' }, body: 'Repro steps attached.', createdAt: '1970-01-01T00:00:00.000Z' }]
 
 const PANE = {
-  title: 'My Linear tickets',
+  title: 'Linear',
   isFocused: true,
   bodyColumns: 80,
   placement: 'dock' as const,

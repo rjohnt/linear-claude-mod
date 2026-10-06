@@ -20,7 +20,7 @@ const STATES = [
 ]
 
 const PANE = {
-  title: 'My Linear tickets',
+  title: 'Linear',
   isFocused: true,
   bodyColumns: 80,
   placement: 'dock' as const,

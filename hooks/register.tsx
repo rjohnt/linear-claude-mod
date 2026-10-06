@@ -205,7 +205,7 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'tickets' }, async $ => {
     await backToList($)
-    const opened = await $.ui.open({ id: PANE, title: 'My Linear tickets', focus: true })
+    const opened = await $.ui.open({ id: PANE, title: 'Linear', focus: true })
     await refresh($)
     const { tickets, error } = await read($, board)
     const count = error ? `Linear: ${error}` : `${tickets.length} open Linear tickets.`
